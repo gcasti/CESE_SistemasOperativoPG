@@ -50,3 +50,7 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+TP1_resolucion/log.txt
+TP1_resolucion/reader
+TP1_resolucion/signal.txt
+TP1_resolucion/writer
