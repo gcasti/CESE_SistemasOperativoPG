@@ -51,7 +51,7 @@ int main(void)
     {
         perror ("File error");
     }
-    fprintf(fp_log_data, "%s \n", "File log packet data receive \n"); 
+    fprintf(fp_log_data, "%s \n", "File log data data receive \n"); 
 
     /* open file for logging signal */ 
     fp_log_signal = fopen(file_sig_name,"w+");
@@ -70,7 +70,7 @@ int main(void)
 			perror("read");
         }
         else
-		{   /* Processing data */
+		{   /* Processing data receive*/
 			inputBuffer[bytesRead] = '\0';
             
 			printf("reader: read %d bytes: \"%s\"\n", bytesRead, inputBuffer);
@@ -92,7 +92,7 @@ int main(void)
                     int count = fprintf(fp_log_signal, "%s \n", inputBuffer);
                     printf("Logging %d \n",count);
                 }else{
-                    printf("data not valid\n");
+                    printf("Error data received \n");
                 }
             }
 		}
