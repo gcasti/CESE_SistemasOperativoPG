@@ -1,3 +1,6 @@
+/*
+ Autor: Guillermo Luis Castiglioni
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -25,7 +28,6 @@ int main(void)
     char *p = NULL;
     int i = 0;
     char header[SIZE_OF_HEADER];
-
     
     /* Create named fifo. -1 means already exists so no action if already exists */
     if ( (returnCode = mknod(FIFO_NAME, S_IFIFO | 0666, 0) ) < -1  )
@@ -51,7 +53,7 @@ int main(void)
     {
         perror ("File error");
     }
-    fprintf(fp_log_data, "%s \n", "File log data received \n"); 
+    fprintf(fp_log_data, "%s \n", "File to log received data\n"); 
 
     /* open file for logging signal */ 
     fp_log_signal = fopen(file_sig_name,"w+");
@@ -59,7 +61,7 @@ int main(void)
     {
         perror ("File error");
     }
-    fprintf(fp_log_signal, "%s \n", "File log signal received \n"); 
+    fprintf(fp_log_signal, "%s \n", "File to log received signals \n"); 
     
     /* Loop until read syscall returns a value <= 0 */
 	do
@@ -82,12 +84,12 @@ int main(void)
                     
             /* Log data or signal */
             
-            if(0 == strncmp(header,HEADER_DATA,SIZE_OF_HEADER))
+            if(strncmp(header,HEADER_DATA,SIZE_OF_HEADER) == 0)
             {
                 int count = fprintf(fp_log_data, "%s \n", inputBuffer); 
                 printf("Logging %d \n",count);
             }else{
-                if(0 == strncmp(header,HEADER_SIGNAL,SIZE_OF_HEADER))
+                if(strncmp(header,HEADER_SIGNAL,SIZE_OF_HEADER) == 0)
                 {
                     int count = fprintf(fp_log_signal, "%s \n", inputBuffer);
                     printf("Logging %d \n",count);

@@ -1,3 +1,6 @@
+/*
+ Autor: Guillermo Luis Castiglioni
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -21,7 +24,8 @@ volatile sig_atomic_t fd;
 
 void receiveSIGUSER1(int sig){
    int32_t bytesWroteSig = 0;
-   if( bytesWroteSig == write(fd, msg_sig1, sizeof(msg_sig1)) == -1 ){
+   if( bytesWroteSig == write(fd, msg_sig1, sizeof(msg_sig1)) == -1 )
+   {
        perror("Error Signal");
    }else{
        printf("Signal 1 received \n");
@@ -29,7 +33,8 @@ void receiveSIGUSER1(int sig){
 }
 void receiveSIGUSER2(int sig){
     int32_t bytesWroteSig = 0;
-   if( bytesWroteSig == write(fd, msg_sig2, sizeof(msg_sig2)) == -1 ){
+   if( bytesWroteSig == write(fd, msg_sig2, sizeof(msg_sig2)) == -1 )
+   {
        perror("Error Signal");
    }else{
        printf("Signal 2 received \n");
@@ -38,16 +43,13 @@ void receiveSIGUSER2(int sig){
 
 int main(void)
 {
-   
     char outputBuffer[BUFFER_SIZE];
     char msg_buffer[BUFFER_SIZE];
 	uint32_t bytesWrote;
-	int32_t returnCode;
-    int32_t count_characters = 0;
+	int32_t returnCode , count_characters = 0;
     pid_t pid_process;
-    struct sigaction sa1;
-    struct sigaction sa2;
-    
+    struct sigaction sa1 , sa2;
+       
     sa1.sa_handler = receiveSIGUSER1;
     sa1.sa_flags = 0; //SA_RESTART;
 	sigemptyset(&sa1.sa_mask);
