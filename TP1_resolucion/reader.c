@@ -51,7 +51,7 @@ int main(void)
     {
         perror ("File error");
     }
-    fprintf(fp_log_data, "%s \n", "File log data data receive \n"); 
+    fprintf(fp_log_data, "%s \n", "File log data received \n"); 
 
     /* open file for logging signal */ 
     fp_log_signal = fopen(file_sig_name,"w+");
@@ -59,7 +59,7 @@ int main(void)
     {
         perror ("File error");
     }
-    fprintf(fp_log_signal, "%s \n", "File log signal receive \n"); 
+    fprintf(fp_log_signal, "%s \n", "File log signal received \n"); 
     
     /* Loop until read syscall returns a value <= 0 */
 	do
