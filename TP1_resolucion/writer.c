@@ -14,38 +14,52 @@
 #define BUFFER_SIZE 300
 
 static char const * const format_msg = "DATA: %s";
-static char const * const format_sig = "SIGN: %d";
+static char const * const msg_sig1 = "SIGN: 1";
+static char const * const msg_sig2 = "SIGN: 2";
 
 volatile sig_atomic_t fd;
-char msg_buffer[BUFFER_SIZE];
 
 void receiveSIGUSER1(int sig){
-    snprintf(msg_buffer,BUFFER_SIZE,format_sig,1);
+   int32_t bytesWroteSig = 0;
+   if( bytesWroteSig == write(fd, msg_sig1, sizeof(msg_sig1)) == -1 ){
+       perror("Error Signal");
+   }else{
+       printf("Signal 1 received \n");
+   };
 }
 void receiveSIGUSER2(int sig){
-    write(fd, "Receive SIGUSER2\n", 20);
+    int32_t bytesWroteSig = 0;
+   if( bytesWroteSig == write(fd, msg_sig2, sizeof(msg_sig2)) == -1 ){
+       perror("Error Signal");
+   }else{
+       printf("Signal 2 received \n");
+   };
 }
 
 int main(void)
 {
    
     char outputBuffer[BUFFER_SIZE];
-    //char msg_buffer[BUFFER_SIZE];
+    char msg_buffer[BUFFER_SIZE];
 	uint32_t bytesWrote;
 	int32_t returnCode;
     int32_t count_characters = 0;
     pid_t pid_process;
-    struct sigaction siguser1;
-    struct sigaction siguser2;
+    struct sigaction sa1;
+    struct sigaction sa2;
     
-    siguser1.sa_handler = receiveSIGUSER1;
-    siguser2.sa_handler = receiveSIGUSER2;
+    sa1.sa_handler = receiveSIGUSER1;
+    sa1.sa_flags = 0; //SA_RESTART;
+	sigemptyset(&sa1.sa_mask);
+    sa2.sa_handler = receiveSIGUSER2;
+    sa2.sa_flags = 0; //SA_RESTART;
+	sigemptyset(&sa2.sa_mask);
 
-    if (sigaction(SIGUSR1,&siguser1,NULL) == -1) {
+    if (sigaction(SIGUSR1,&sa1,NULL) == -1) {
         perror("sigaction");
         exit(1);
     }
-    if (sigaction(SIGUSR2,&siguser2,NULL) == -1) {
+    if (sigaction(SIGUSR2,&sa2,NULL) == -1) {
         perror("sigaction");
         exit(1);
     }
@@ -76,18 +90,21 @@ int main(void)
 	while (1)
 	{
         /* Get some text from console */
-		fgets(outputBuffer, BUFFER_SIZE, stdin);
-        
-        count_characters = snprintf(msg_buffer,BUFFER_SIZE,format_msg,outputBuffer);
+		if (fgets(outputBuffer, BUFFER_SIZE, stdin) == NULL)
+        {
+            perror("fgets");
+        }else{
+            count_characters = snprintf(msg_buffer,BUFFER_SIZE,format_msg,outputBuffer);
 
-        /* Write buffer to named fifo. Strlen - 1 to avoid sending \n char */
-		if ((bytesWrote = write(fd, msg_buffer, strlen(msg_buffer)-1)) == -1)
-        {
-			perror("write");
-        }
-        else
-        {
-			printf("writer: wrote %d bytes\n", bytesWrote);
+            /* Write buffer to named fifo. Strlen - 1 to avoid sending \n char */
+            if ((bytesWrote = write(fd, msg_buffer, strlen(msg_buffer)-1)) == -1)
+            {
+                perror("write");
+            }
+            else
+            {
+                printf("writer: wrote %d bytes\n", bytesWrote);
+            }
         }
 	}
 	return 0;
