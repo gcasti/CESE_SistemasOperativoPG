@@ -17,7 +17,8 @@ static char const * const format_out = ">OUT:%d,%d\r\n";
 int main(void)
 {
 	int count_read = 0;
-	char buf[10]; 
+	char buf[10];
+	int bytes_read; 
 
 	socklen_t addr_len;
 	struct sockaddr_in clientaddr;
@@ -61,6 +62,7 @@ int main(void)
 	while(1){
 		// Ejecutamos accept() para recibir conexiones entrantes
 		addr_len = sizeof(struct sockaddr_in);
+		// solo acepta un cliente
     	if ( (newfd = accept(fd_server_socket, (struct sockaddr *)&clientaddr,&addr_len)) == -1)
       	{
 		    perror("error en accept");
@@ -72,11 +74,21 @@ int main(void)
 
 			while(1)
 			{
-   		    	if( recv(newfd,buffer,128,0) == EOF )
+				// read bloqueante	
+            	if( (n = read(newfd, buffer, 128)) == -1 )
 				{
-					printf("cliente desconectado \n");
+                	perror("ERROR: READ");
+                	exit(1);
+           		}
+				if(n == 0)
+				{
+					printf("Cliente desconectado\n");
 					break;
 				}
+				buffer[n]=0x00;
+            	printf("Recibi %d bytes.:%s\n", n , buffer);
+							
+				sleep(1);
 			}	
 			close(newfd);
 		}
