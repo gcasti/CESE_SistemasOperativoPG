@@ -8,18 +8,25 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-
+#include <pthread.h>
 #include "SerialManager.h"
 
 static char const * const format_in  = ">SW:%d,%d\r\n";
 static char const * const format_out = ">OUT:%d,%d\r\n";
+void* connection_serial_emulator(void* arg);
 
 int main(void)
-{
-	int count_read = 0;
-	char buf[10];
-	int bytes_read; 
+{	printf("*************************\r\n");
+	printf("* Inicio Serial Service *\r\n");
+	printf("*************************\r\n");
 
+	int bytes_read;
+
+	pthread_t thread_emulator;
+	int ret;
+	ret = pthread_create (&thread_emulator,NULL, connection_serial_emulator ,NULL);
+	// chequear el retorno 
+	
 	socklen_t addr_len;
 	struct sockaddr_in clientaddr;
 	struct sockaddr_in serveraddr;
@@ -94,19 +101,18 @@ int main(void)
 		}
 	}
 
-	
-
-
-
+}
 
 // Conexión con el emulador del puerto serie
-	printf("Inicio Serial Service\r\n");
+void* connection_serial_emulator(void* arg){
+	int count_read = 0;
+	char buf[10];
 	
 	if(serial_open(1,115200)!=0)
 	{
 		printf("Error abriendo puerto serie \r\n");
 	}
-	/*while(1)
+	while(1)
 	{
 		count_read = serial_receive(buf, sizeof(buf));
 		if (count_read != 0)
@@ -116,7 +122,7 @@ int main(void)
 			
 		}
 		sleep(100);
-	}*/
+	}
 	serial_close();
 	exit(EXIT_SUCCESS);
 	return 0;
