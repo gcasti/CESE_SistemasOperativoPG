@@ -5,26 +5,42 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-
+#include <pthread.h>
 #include "SerialManager.h"
 
 static char const * const format_in  = ">SW:%d,%d\r\n";
 static char const * const format_out = ">OUT:%d,%d\r\n";
 
-int main(void)
-{
-	int count_read = 0;
-	char buf[10];
-	int bytes_read; 
+bool serial_connected = false;
+int newfd;
 
+void* connection_serial_emulator(void* arg);
+
+int main(void)
+{	printf("*************************\r\n");
+	printf("* Inicio Serial Service *\r\n");
+	printf("*************************\r\n");
+
+	int bytes_read;
+
+	pthread_t thread_emulator;
+	int retVal;
+	retVal = pthread_create (&thread_emulator,NULL, connection_serial_emulator ,NULL);
+	if (retVal < 0) {
+    	errno = retVal;
+        perror("pthread_create serial");
+        return -1;
+    }
+
+	// Socket	
 	socklen_t addr_len;
 	struct sockaddr_in clientaddr;
 	struct sockaddr_in serveraddr;
 	char buffer[128];
-	int newfd;
 	int n;
     int fd_server_socket;
 
@@ -80,44 +96,58 @@ int main(void)
                 	perror("ERROR: READ");
                 	exit(1);
            		}
+				// si read devuelve 0 quiere decir que el cliente se desconecto
 				if(n == 0)
 				{
 					printf("Cliente desconectado\n");
 					break;
-				}
-				buffer[n]=0x00;
-            	printf("Recibi %d bytes.:%s\n", n , buffer);
-							
+				}else{
+					buffer[n]=0x00;
+            		printf("Recibi %d bytes.:%s\n", n , buffer);
+					if(serial_connected){
+						serial_send(buffer,n);
+					}else{
+						printf("Emulador puerto serie no disponible\n");
+					}
+				}		
 				sleep(1);
 			}	
 			close(newfd);
 		}
 	}
 
-	
-
-
-
+}
 
 // Conexión con el emulador del puerto serie
-	printf("Inicio Serial Service\r\n");
+void* connection_serial_emulator(void* arg){
+	int count_read = 0;
+	char buf[10];
 	
 	if(serial_open(1,115200)!=0)
 	{
 		printf("Error abriendo puerto serie \r\n");
+		serial_connected = false;
+	}else{
+		printf("Emulador puero serie conectado \n");
+		serial_connected = true;
 	}
-	/*while(1)
+	while(1)
 	{
-		count_read = serial_receive(buf, sizeof(buf));
-		if (count_read != 0)
+		
+		if (serial_receive(buf, sizeof(buf)) > 0)
 		{
-			printf("Datos recibidos %s",buf);			
-			count_read = 0;
-			
+			printf("Datos recibidos desde el emulador %s",buf);			
+			if (write (newfd, buf, sizeof(buf)) == -1)
+    		{
+      			perror("Error escribiendo mensaje en socket");
+      			exit (1);
+    		}
 		}
-		sleep(100);
-	}*/
+		
+		sleep(1);
+	}
 	serial_close();
+	serial_connected = false;
 	exit(EXIT_SUCCESS);
 	return 0;
 }
