@@ -151,7 +151,7 @@ void* connection_interface_service(void* arg) {
 						printf("Emulador puerto serie no disponible\n");
 					}
 				}		
-				sleep(1);
+				usleep(100);
 			}	
 			close(newfd);
 		}
@@ -226,6 +226,6 @@ static int config_handler_signal(int signal , void* functionSignal ){
 
 static void signal_cb(void)
 {
-	write(fd,"Señal recibida \n",15);
+	write(fd,"Señal recibida \n",17);
 	exit(0);
 }
