@@ -10,18 +10,40 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <signal.h>
 #include "SerialManager.h"
 
 bool serial_connected = false;
 int newfd;
+int fd;
 
 void* connection_serial_emulator(void* arg);
 void* connection_interface_service(void* arg);
+static int signal_action(int action, int signal);
+static int config_handler_signal(int signal , void* functionSignal);
+static void signal_cb(void);
+
 
 int main(void)
-{	printf("*************************\r\n");
-	printf("* Inicio Serial Service *\r\n");
+{	
+	
 	printf("*************************\r\n");
+	printf("* Inicio Serial Service *\r\n");
+    printf("* PID %d            *\r\n",getpid());
+	printf("*************************\r\n");
+	
+	// Hilo principal que maneja las señales
+	// Configuración de handlers de señales
+	config_handler_signal(SIGINT,signal_cb);
+	config_handler_signal(SIGTERM,signal_cb);
+
+	// Bloqueo de señales para los hilos que se crearán
+	if(signal_action(SIG_BLOCK , SIGINT) < 0 ){
+		perror("Error bloqueo señal SIGINT");
+	}
+	if(signal_action(SIG_BLOCK , SIGTERM) < 0){
+		perror("Error bloqueo señal SIGTERM");
+	}
 
 	// Creación de un thread para establecer la comunicación con el emulador del puerto serie
 	pthread_t thread_emulator;
@@ -33,7 +55,7 @@ int main(void)
         return -1;
     }
 
-	// Creación de un theread para establecer la comunicación con la InterfaceService
+	// Creación de un thread para establecer la comunicación con la InterfaceService
 	pthread_t thread_interface_service;
 	retVal = pthread_create (&thread_interface_service , NULL , connection_interface_service , NULL);
 	if (retVal < 0) {
@@ -41,11 +63,19 @@ int main(void)
         perror("Error al crear thread: thread_interface_service");
         return -1;
     }
+	//Se desbloquean las señales de forma que el hilo principal pueda manejarlas
+	if(signal_action(SIG_UNBLOCK , SIGINT) < 0 ){
+		perror("Error desbloqueo señal SIGINT");
+	}
+	if(signal_action(SIG_UNBLOCK , SIGTERM) < 0){
+		perror("Error desbloqueo señal SIGTERM");
+	}
 
 	pthread_join(thread_emulator , NULL);
 	pthread_join(thread_interface_service , NULL);
 
 	printf("Fin del programa \n");
+	return(0);
 }
 
 void* connection_interface_service(void* arg) {
@@ -162,4 +192,40 @@ void* connection_serial_emulator(void* arg){
 	serial_close();
 	serial_connected = false;
 	exit(EXIT_SUCCESS);
+}
+
+// Función interna que bloquea o desbloquea  las señales 
+static int signal_action(int action, int signal){
+    sigset_t set;
+	int retVal = 0;
+	sigemptyset(&set);
+    
+    if(sigaddset(&set, signal) < 0){	
+		perror("Error sigaddset \n");
+		retVal = -1;
+	}
+	if(pthread_sigmask(action, &set, NULL) < 0){
+        perror("Error sigmask \n");
+        return -1;
+    }
+	return retVal;
+}
+// Función para configurar los handlers de las señales que se desean usar
+static int config_handler_signal(int signal , void* functionSignal ){
+    struct sigaction sa;
+       
+    sa.sa_handler = functionSignal;
+    sa.sa_flags = 0; 
+	sigemptyset(&sa.sa_mask);
+
+    if (sigaction(signal , &sa , NULL) == -1) {
+        perror("Error sigaction \n");
+        return(-1);
+    }
+}
+
+static void signal_cb(void)
+{
+	write(fd,"Señal recibida \n",15);
+	exit(0);
 }
