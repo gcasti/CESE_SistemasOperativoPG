@@ -12,42 +12,54 @@
 #include <pthread.h>
 #include "SerialManager.h"
 
-static char const * const format_in  = ">SW:%d,%d\r\n";
-static char const * const format_out = ">OUT:%d,%d\r\n";
-
 bool serial_connected = false;
 int newfd;
 
 void* connection_serial_emulator(void* arg);
+void* connection_interface_service(void* arg);
 
 int main(void)
 {	printf("*************************\r\n");
 	printf("* Inicio Serial Service *\r\n");
 	printf("*************************\r\n");
 
-	int bytes_read;
-
+	// Creación de un thread para establecer la comunicación con el emulador del puerto serie
 	pthread_t thread_emulator;
 	int retVal;
-	retVal = pthread_create (&thread_emulator,NULL, connection_serial_emulator ,NULL);
+	retVal = pthread_create (&thread_emulator , NULL , connection_serial_emulator , NULL);
 	if (retVal < 0) {
     	errno = retVal;
-        perror("pthread_create serial");
+        perror("Error al crear thread: thread_emulator");
         return -1;
     }
 
-	// Socket	
+	// Creación de un theread para establecer la comunicación con la InterfaceService
+	pthread_t thread_interface_service;
+	retVal = pthread_create (&thread_interface_service , NULL , connection_interface_service , NULL);
+	if (retVal < 0) {
+    	errno = retVal;
+        perror("Error al crear thread: thread_interface_service");
+        return -1;
+    }
+
+	pthread_join(thread_emulator , NULL);
+	pthread_join(thread_interface_service , NULL);
+
+	printf("Fin del programa \n");
+}
+
+void* connection_interface_service(void* arg) {
 	socklen_t addr_len;
 	struct sockaddr_in clientaddr;
 	struct sockaddr_in serveraddr;
-	char buffer[128];
-	int n;
+	char buffer_socket[10];
+	int receive_bytes;
     int fd_server_socket;
 
-	// Creamos socket
+	printf("Inicio thread connection_interface_service \n");
 	fd_server_socket = socket(AF_INET,SOCK_STREAM, 0);
 
-	// Cargamos datos de IP:PORT del server
+	// Se cargan los datos de IP:PORT del server
     bzero((char*) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_port = htons(10000);
@@ -56,29 +68,26 @@ int main(void)
     if(inet_pton(AF_INET, "127.0.0.1", &(serveraddr.sin_addr))<=0)
     {
        	fprintf(stderr,"ERROR invalid server IP\r\n");
-       	return 1;
+       	exit(1);
     }
 
-	// Abrimos puerto con bind()
+	// Se abre el puerto esperando la conexión de algún cliente
 	if (bind(fd_server_socket , (struct sockaddr*)&serveraddr, sizeof(serveraddr)) == -1) {
 		close(fd_server_socket);
 		perror("listener: bind");
-		return 1;
+		exit(1);
 	}
-
-	// Seteamos socket en modo Listening
 	if (listen (fd_server_socket, 10) == -1) // backlog=10
   	{
     	perror("error en listen");
     	exit(1);
   	}
-
-	// Conexión socket 
+ 
 	printf("Espera de conexión entrante \n");
 	while(1){
-		// Ejecutamos accept() para recibir conexiones entrantes
+		
 		addr_len = sizeof(struct sockaddr_in);
-		// solo acepta un cliente
+		
     	if ( (newfd = accept(fd_server_socket, (struct sockaddr *)&clientaddr,&addr_len)) == -1)
       	{
 		    perror("error en accept");
@@ -91,21 +100,23 @@ int main(void)
 			while(1)
 			{
 				// read bloqueante	
-            	if( (n = read(newfd, buffer, 128)) == -1 )
+            	if( (receive_bytes = read(newfd, buffer_socket, sizeof(buffer_socket))) == -1 )
 				{
-                	perror("ERROR: READ");
+                	perror("error en read");
                 	exit(1);
            		}
 				// si read devuelve 0 quiere decir que el cliente se desconecto
-				if(n == 0)
+				if(receive_bytes == 0)
 				{
-					printf("Cliente desconectado\n");
+					printf("*** InterfaceService desconectada ***\n");
 					break;
 				}else{
-					buffer[n]=0x00;
-            		printf("Recibi %d bytes.:%s\n", n , buffer);
+					buffer_socket[receive_bytes]=0x00;
+
+            		printf("Socket: recepción %d bytes: %s\n", receive_bytes , buffer_socket);
+					// Se reenvía el mensaje recibido al emulador del puerto serie
 					if(serial_connected){
-						serial_send(buffer,n);
+						serial_send(buffer_socket,receive_bytes);
 					}else{
 						printf("Emulador puerto serie no disponible\n");
 					}
@@ -115,39 +126,40 @@ int main(void)
 			close(newfd);
 		}
 	}
-
 }
+
 
 // Conexión con el emulador del puerto serie
 void* connection_serial_emulator(void* arg){
 	int count_read = 0;
-	char buf[10];
+	char buffer_serial[10];
 	
-	if(serial_open(1,115200)!=0)
+	printf("Inicio thread connection_serial_emulator \n");
+
+	if(serial_open(1,115200) != 0)
 	{
 		printf("Error abriendo puerto serie \r\n");
 		serial_connected = false;
 	}else{
-		printf("Emulador puero serie conectado \n");
+		printf("Emulador puerto serie conectado \n");
 		serial_connected = true;
 	}
 	while(1)
 	{
 		
-		if (serial_receive(buf, sizeof(buf)) > 0)
+		if (serial_receive(buffer_serial , sizeof(buffer_serial)) > 0)
 		{
-			printf("Datos recibidos desde el emulador %s",buf);			
-			if (write (newfd, buf, sizeof(buf)) == -1)
+			printf("Serie: recepción : %s\n", buffer_serial);
+			//Envío a la InterfaceService
+			if (write (newfd, buffer_serial, sizeof(buffer_serial)) == -1)
     		{
       			perror("Error escribiendo mensaje en socket");
       			exit (1);
     		}
 		}
-		
 		sleep(1);
 	}
 	serial_close();
 	serial_connected = false;
 	exit(EXIT_SUCCESS);
-	return 0;
 }
