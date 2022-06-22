@@ -48,18 +48,18 @@ int main(void)
 		perror("Error bloqueo señal SIGTERM");
 	}
 
-	// Creación de un thread para establecer la comunicación con el emulador del puerto serie
+	/* Creación de un thread para establecer la comunicación con el emulador del puerto serie
 	pthread_t thread_emulator;
-	int retVal;
 	retVal = pthread_create (&thread_emulator , NULL , connection_serial_emulator , NULL);
 	if (retVal < 0) {
     	errno = retVal;
         perror("Error al crear thread: thread_emulator");
         return -1;
-    }
+    }*/
 
 	// Creación de un thread para establecer la comunicación con la InterfaceService
 	pthread_t thread_interface_service;
+	int retVal;
 	retVal = pthread_create (&thread_interface_service , NULL , connection_interface_service , NULL);
 	if (retVal < 0) {
     	errno = retVal;
@@ -73,9 +73,59 @@ int main(void)
 	if(signal_action(SIG_UNBLOCK , SIGTERM) < 0){
 		perror("Error desbloqueo señal SIGTERM");
 	}
+//===========================================================================
 
-	pthread_join(thread_emulator , NULL);
-	pthread_join(thread_interface_service , NULL);
+	int count_read = 0;
+	char buffer_serial[10];
+	
+	if(serial_open(1,115200) != 0)
+	{
+		printf("Error abriendo puerto serie \r\n");
+		
+		pthread_mutex_lock(&mutex_serial);
+		serial_connected = false;
+		pthread_mutex_unlock(&mutex_serial);
+
+	}else{
+		printf("Emulador puerto serie conectado \n");
+		
+		pthread_mutex_lock(&mutex_serial);
+		serial_connected = true;
+		pthread_mutex_unlock(&mutex_serial);
+	}
+	while(1)
+	{
+		
+		if (serial_receive(buffer_serial , sizeof(buffer_serial)) > 0)
+		{
+			printf("Serie recepción: %s\n", buffer_serial);
+			//Envío del mensaje a InterfaceService
+
+			if(serial_connected)
+			{
+				if (write (newfd, buffer_serial, sizeof(buffer_serial)) < 0)
+    			{
+      				perror("Error escribiendo mensaje en socket");
+      				break;
+    			}
+			}else
+			{
+				printf("InterfaceService no disponible\n");
+			}
+		}
+		usleep(10000);
+	}
+
+	pthread_mutex_lock(&mutex_serial);
+	serial_connected = false;
+	pthread_mutex_unlock(&mutex_serial);
+	
+	serial_close();
+	pthread_cancel(thread_interface_service);	
+
+//===========================================================================
+	// pthread_join(thread_emulator , NULL);
+	// pthread_join(thread_interface_service , NULL);
 
 	printf("Fin del programa \n");
 	return(0);
@@ -153,7 +203,7 @@ void* connection_interface_service(void* arg) {
 				}else{
 					buffer_socket[receive_bytes]=0x00;
 
-            		printf("Socket: recepción %d bytes: %s\n", receive_bytes , buffer_socket);
+            		printf("Socket recepción: %s\n", buffer_socket);
 					// Se reenvía el mensaje recibido al emulador del puerto serie
 					if(serial_connected){
 						serial_send(buffer_socket,receive_bytes);
@@ -161,7 +211,7 @@ void* connection_interface_service(void* arg) {
 						printf("Emulador puerto serie no disponible\n");
 					}
 				}		
-				usleep(10);
+				
 			}	
 			close(newfd);
 		}
@@ -169,7 +219,7 @@ void* connection_interface_service(void* arg) {
 }
 
 
-// Conexión con el emulador del puerto serie
+/* Conexión con el emulador del puerto serie
 void* connection_serial_emulator(void* arg){
 	int count_read = 0;
 	char buffer_serial[10];
@@ -211,7 +261,7 @@ void* connection_serial_emulator(void* arg){
 				printf("InterfaceService no disponible\n");
 			}
 		}
-		sleep(1);
+		usleep(10000);
 	}
 	serial_close();
 
@@ -220,7 +270,7 @@ void* connection_serial_emulator(void* arg){
 	pthread_mutex_unlock(&mutex_serial);
 
 	exit(EXIT_SUCCESS);
-}
+}*/
 
 // Función interna que bloquea o desbloquea  las señales 
 static int signal_action(int action, int signal){
