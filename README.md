@@ -9,7 +9,7 @@ Comunicar dos procesos por medio de un named fifo. El proceso Writer podrá reci
 consola y signals. El proceso Reader deberá loguear en un archivo el texto que recibe el proceso
 Writer y en otro archivo las signals que recibe el proceso Writer.
 
-## Trabajo Práctico 1 
+## Trabajo Práctico 2 
 
 ### Objetivo:
 Se deberá desarrollar un sistema de domótica para el manejo de 3 luces. El sistema permitirá

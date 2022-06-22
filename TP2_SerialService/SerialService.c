@@ -13,7 +13,10 @@
 #include <signal.h>
 #include "SerialManager.h"
 
+pthread_mutex_t mutex_serial = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_socket = PTHREAD_MUTEX_INITIALIZER;
 bool serial_connected = false;
+bool socket_connected = false;
 int newfd;
 int fd;
 
@@ -126,6 +129,10 @@ void* connection_interface_service(void* arg) {
 			char ipClient[32];
 			inet_ntop(AF_INET, &(clientaddr.sin_addr), ipClient, sizeof(ipClient));
 			printf  ("server:  conexion desde:  %s\n",ipClient);
+			
+			pthread_mutex_lock(&mutex_socket);
+			socket_connected = true;
+			pthread_mutex_unlock(&mutex_socket);
 
 			while(1)
 			{
@@ -139,6 +146,9 @@ void* connection_interface_service(void* arg) {
 				if(receive_bytes == 0)
 				{
 					printf("*** InterfaceService desconectada ***\n");
+					pthread_mutex_lock(&mutex_socket);
+					socket_connected = false;
+					pthread_mutex_unlock(&mutex_socket);
 					break;
 				}else{
 					buffer_socket[receive_bytes]=0x00;
@@ -151,7 +161,7 @@ void* connection_interface_service(void* arg) {
 						printf("Emulador puerto serie no disponible\n");
 					}
 				}		
-				usleep(100);
+				usleep(10);
 			}	
 			close(newfd);
 		}
@@ -169,10 +179,17 @@ void* connection_serial_emulator(void* arg){
 	if(serial_open(1,115200) != 0)
 	{
 		printf("Error abriendo puerto serie \r\n");
+		
+		pthread_mutex_lock(&mutex_serial);
 		serial_connected = false;
+		pthread_mutex_unlock(&mutex_serial);
+
 	}else{
 		printf("Emulador puerto serie conectado \n");
+		
+		pthread_mutex_lock(&mutex_serial);
 		serial_connected = true;
+		pthread_mutex_unlock(&mutex_serial);
 	}
 	while(1)
 	{
@@ -180,17 +197,28 @@ void* connection_serial_emulator(void* arg){
 		if (serial_receive(buffer_serial , sizeof(buffer_serial)) > 0)
 		{
 			printf("Serie: recepción : %s\n", buffer_serial);
-			//Envío a la InterfaceService
-			if (write (newfd, buffer_serial, sizeof(buffer_serial)) == -1)
-    		{
-      			perror("Error escribiendo mensaje en socket");
-      			exit (1);
-    		}
+			//Envío del mensaje a InterfaceService
+
+			if(serial_connected)
+			{
+				if (write (newfd, buffer_serial, sizeof(buffer_serial)) < 0)
+    			{
+      				perror("Error escribiendo mensaje en socket");
+      				exit (1);
+    			}
+			}else
+			{
+				printf("InterfaceService no disponible\n");
+			}
 		}
 		sleep(1);
 	}
 	serial_close();
+
+	pthread_mutex_lock(&mutex_serial);
 	serial_connected = false;
+	pthread_mutex_unlock(&mutex_serial);
+
 	exit(EXIT_SUCCESS);
 }
 
