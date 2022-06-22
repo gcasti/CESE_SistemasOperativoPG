@@ -18,7 +18,7 @@ pthread_mutex_t mutex_socket = PTHREAD_MUTEX_INITIALIZER;
 bool serial_connected = false;
 bool socket_connected = false;
 bool end_program = false;
-int fd_client_socket; 
+int fd_client_socket;
 int fd_server_socket;
 int fd;
 
@@ -28,6 +28,10 @@ static int signal_action(int action, int signal);
 static int config_handler_signal(int signal, void *functionSignal);
 static void signal_cb(void);
 
+/* Se utiliza un hilo auxiliar para gestionar la conexión con InterfaceService empleando un socket
+ *  En el hilo principal se gestiona la conexión con el Emulador del puerto serie, manejo de señales
+ *  y finalización de todos los recursos empleados */
+
 int main(void)
 {
 	printf("*************************\r\n");
@@ -35,10 +39,15 @@ int main(void)
 	printf("* PID %d             *\r\n", getpid());
 	printf("*************************\r\n");
 
-	// Hilo principal que maneja las señales
 	// Configuración de handlers de señales
-	config_handler_signal(SIGINT, signal_cb);
-	config_handler_signal(SIGTERM, signal_cb);
+	if (config_handler_signal(SIGINT, signal_cb) != 0)
+	{
+		perror("Error config handler SIGINT");
+	}
+	if (config_handler_signal(SIGTERM, signal_cb) != 0)
+	{
+		perror("Configuración handler SIGINT");
+	}
 
 	// Bloqueo de señales para los hilos que se crearán
 	if (signal_action(SIG_BLOCK, SIGINT) < 0)
@@ -56,10 +65,10 @@ int main(void)
 	retVal = pthread_create(&thread_interface_service, NULL, connection_interface_service, NULL);
 	if (retVal < 0)
 	{
-		errno = retVal;
 		perror("Error al crear thread: thread_interface_service");
-		return -1;
+		exit(1);
 	}
+
 	// Se desbloquean las señales de forma que el hilo principal pueda manejarlas
 	if (signal_action(SIG_UNBLOCK, SIGINT) < 0)
 	{
@@ -70,16 +79,17 @@ int main(void)
 		perror("Error desbloqueo señal SIGTERM");
 	}
 
+	// Conexión con el Emulador del puerto serie
+	/* Nota: La función suministrada permanece esperando que se establezca
+	 la conexión debería modificarse para ejecutar un cierre correcto del programa */
 	int count_read = 0;
 	char buffer_serial[10];
+	bool check_state = false;
 
 	if (serial_open(1, 115200) != 0)
 	{
 		printf("Error abriendo puerto serie \r\n");
-
-		pthread_mutex_lock(&mutex_serial);
-		serial_connected = false;
-		pthread_mutex_unlock(&mutex_serial);
+		exit(1);
 	}
 	else
 	{
@@ -92,9 +102,12 @@ int main(void)
 		if (serial_receive(buffer_serial, sizeof(buffer_serial)) > 0)
 		{
 			printf("Serie recepción: %s\n", buffer_serial);
-			// Envío del mensaje a InterfaceService
 
-			if (serial_connected)
+			// Envío del mensaje a InterfaceService
+			pthread_mutex_lock(&mutex_serial);
+			check_state = serial_connected;
+			pthread_mutex_unlock(&mutex_serial);
+			if (check_state)
 			{
 				if (write(fd_client_socket, buffer_serial, sizeof(buffer_serial)) < 0)
 				{
@@ -110,26 +123,37 @@ int main(void)
 		usleep(10000);
 	}
 
-	pthread_mutex_lock(&mutex_serial);
-	serial_connected = false;
-	pthread_mutex_unlock(&mutex_serial);
-	
-	// El theread finalizará porque las funciones accept y read bloqueantes utilizadas son puntos de cancelación
-	pthread_cancel(thread_interface_service);
+	// El hilo finaliza porque las funciones accept y read bloqueantes utilizadas son puntos de cancelación
+	if (pthread_cancel(thread_interface_service) != 0)
+	{
+		perror("Error finalización pthread");
+		exit(1);
+	}
 
-	// espera finalización del hilo
-	pthread_join(thread_interface_service , NULL);
+	// Espera finalización del hilo
+	if (pthread_join(thread_interface_service, NULL) != 0)
+	{
+		perror("Error función join");
+		exit(1);
+	}
 
-	if(socket_connected){
-		close(fd_client_socket);
+	if (socket_connected)
+	{
+		if (close(fd_client_socket) < 0)
+		{
+			perror("Error al cerrar el socket");
+		}
 		printf("Cierre socket conexión con Interface Service \n");
 	}
 	printf("Cierre del socket server \n");
-	close(fd_server_socket);
-	
+	if(close(fd_server_socket) < 0)
+	{
+		perror("Error al cerrar el socket");
+	}
+
 	printf("Cierre del puerto serie \n");
 	serial_close();
-	
+
 	printf("Fin del programa \n");
 	exit(EXIT_SUCCESS);
 }
@@ -141,7 +165,8 @@ void *connection_interface_service(void *arg)
 	struct sockaddr_in serveraddr;
 	char buffer_socket[10];
 	int receive_bytes;
-	
+	bool check_state = false;
+
 	printf("Inicio thread connection_interface_service \n");
 	fd_server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -164,7 +189,7 @@ void *connection_interface_service(void *arg)
 		perror("listener: bind");
 		exit(1);
 	}
-	if (listen(fd_server_socket, 10) == -1) // backlog=10
+	if (listen(fd_server_socket, 10) == -1)
 	{
 		perror("error en listen");
 		exit(1);
@@ -199,7 +224,7 @@ void *connection_interface_service(void *arg)
 					perror("error en read");
 					exit(1);
 				}
-				// si read devuelve 0 quiere decir que el cliente se desconecto
+				// si read devuelve 0 quiere decir que el cliente se desconectó
 				if (receive_bytes == 0)
 				{
 					printf("*** InterfaceService desconectada ***\n");
@@ -214,7 +239,10 @@ void *connection_interface_service(void *arg)
 
 					printf("Socket recepción: %s\n", buffer_socket);
 					// Se reenvía el mensaje recibido al emulador del puerto serie
-					if (serial_connected)
+					pthread_mutex_lock(&mutex_serial);
+					check_state = serial_connected;
+					pthread_mutex_unlock(&mutex_serial);
+					if (check_state)
 					{
 						serial_send(buffer_socket, receive_bytes);
 					}
@@ -229,7 +257,7 @@ void *connection_interface_service(void *arg)
 	}
 }
 
-// Función interna que bloquea o desbloquea  las señales
+// Función interna que bloquea o desbloquea una señal
 static int signal_action(int action, int signal)
 {
 	sigset_t set;
@@ -248,7 +276,7 @@ static int signal_action(int action, int signal)
 	}
 	return retVal;
 }
-// Función para configurar los handlers de las señales que se desean usar
+// Función para configurar los handlers de las señales que se desean utilizar
 static int config_handler_signal(int signal, void *functionSignal)
 {
 	struct sigaction sa;
@@ -262,10 +290,11 @@ static int config_handler_signal(int signal, void *functionSignal)
 		perror("Error sigaction \n");
 		return (-1);
 	}
+	return 0;
 }
 
 static void signal_cb(void)
 {
-	write(fd, "Señal recibida \n", 17);
+	write(1, "Señal recibida \n", 17);
 	end_program = true;
 }
